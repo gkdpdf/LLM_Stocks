@@ -4,7 +4,7 @@ import requests
 import os
 
 # --- Configuration ---
-CSV_PATH = r'C:\Users\Admin\Desktop\LLM_Stocks\stock_data_summary_20250726_085144.csv'
+CSV_PATH = r'stock_data_summary_20250726_085144.csv'
 API_KEY = "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"
 
 # --- API Setup ---
