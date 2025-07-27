@@ -1,0 +1,13 @@
+1. % change of the price with respect to the day
+2. Quarterly result data 
+3. RSI Crossover - yes or no
+4. % change in the volume
+5. near all time high?
+6. Total days : 400 days 
+7. 52 weeks day high /low
+8. RVOL data 
+9. RSI Crossover to the 20 
+10. 5 days range 
+11. 4 days range 
+12. 7 days range 
+13. 
