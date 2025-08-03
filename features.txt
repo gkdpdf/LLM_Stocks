@@ -1,5 +1,5 @@
 1. % change of the price with respect to the day
-2. Quarterly result data 
+2. Quarterly result data <>
 3. RSI Crossover - yes or no
 4. % change in the volume
 5. near all time high?
