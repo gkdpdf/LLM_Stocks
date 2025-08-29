@@ -2,271 +2,157 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-import json
-import plotly.express as px
-from openai import OpenAI
-from dotenv import load_dotenv
 import warnings
 warnings.filterwarnings('ignore')
 
-# --- Configuration ---
-load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# --- Minimal Config ---
+st.set_page_config(page_title="Stock Screener", layout="wide", page_icon="📈")
 
-# --- Page Config ---
-st.set_page_config(
-    page_title="AI Stock Analyzer", 
-    layout="wide", 
-    page_icon="📈"
-)
-
-# --- Optimized Styling ---
+# --- Ultra-Light Styling ---
 st.markdown("""
 <style>
-.main-header {
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-    padding: 1.5rem;
-    border-radius: 10px;
-    text-align: center;
-    color: white;
-    margin-bottom: 1rem;
-}
-
-.metric-card {
-    background: white;
-    padding: 1rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    border-left: 3px solid #6366f1;
-}
-
-.chat-message {
-    padding: 0.8rem;
-    border-radius: 10px;
-    margin: 0.5rem 0;
-}
-
-.user-msg { background: #f0f9ff; border-left: 3px solid #0ea5e9; }
-.ai-msg { background: #f8fafc; border-left: 3px solid #8b5cf6; }
-
-.stock-item {
-    background: white;
-    padding: 0.8rem;
-    border-radius: 6px;
-    margin: 0.3rem 0;
-    border-left: 3px solid #10b981;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
+.main { padding: 1rem; }
+.stButton button { width: 100%; height: 3rem; }
+.metric { background: #f8f9fa; padding: 0.5rem; border-radius: 4px; margin: 0.2rem; }
+.stock-list { font-family: monospace; background: #f8f9fa; padding: 1rem; border-radius: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Header ---
-st.markdown("""
-<div class="main-header">
-    <h2>📈 AI Stock Analyzer</h2>
-    <p>Quick stock insights and screening</p>
-</div>
-""", unsafe_allow_html=True)
+st.title("📈 Stock Screener")
 
-# --- Optimized Data Loading ---
+# --- Ultra-Fast Data Loading ---
 CSV_PATH = "stock_data_summary_20250802_122812.csv"
 
-@st.cache_data(ttl=600)
-def load_stock_data():
-    """Load and process stock data efficiently"""
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_data():
     if not os.path.exists(CSV_PATH):
-        return None, None
+        return None
     
     df = pd.read_csv(CSV_PATH)
-    df['date'] = pd.to_datetime(df['date'], errors='coerce')
     
-    # Essential calculations only
-    df['momentum_score'] = calculate_simple_momentum(df)
-    df['signal'] = get_simple_signal(df)
-    df['breakout'] = df['close'] > df.get('Prev Day High', df['high'])
-    
-    # Quick market summary
-    summary = {
-        'total': len(df),
-        'bullish': len(df[df['momentum_score'] > 60]),
-        'breakouts': len(df[df['breakout'] == True]),
-        'top_stocks': df.nlargest(5, 'momentum_score')[['symbol', 'close', 'momentum_score']].to_dict('records')
-    }
-    
-    return df, summary
-
-def calculate_simple_momentum(df):
-    """Simple momentum calculation"""
-    score = 0
-    
-    # RSI component (0-50)
+    # Ultra-minimal processing
     if 'RSI_14' in df.columns:
-        score += np.clip((df['RSI_14'] - 30) / 40 * 50, 0, 50)
-    
-    # MACD component (0-30)
+        df['rsi'] = df['RSI_14'].fillna(50)
+    else:
+        df['rsi'] = 50
+        
     if 'MACD' in df.columns and 'MACD_Signal' in df.columns:
-        score += np.where(df['MACD'] > df['MACD_Signal'], 30, 0)
+        df['macd_bull'] = df['MACD'] > df['MACD_Signal']
+    else:
+        df['macd_bull'] = False
+        
+    # Simple momentum (0-100)
+    df['momentum'] = ((df['rsi'] - 30) / 40 * 60).clip(0, 60) + np.where(df['macd_bull'], 40, 0)
+    df['momentum'] = df['momentum'].clip(0, 100)
     
-    # Price vs EMA (0-20)
-    if 'EMA_50' in df.columns:
-        score += np.where(df['close'] > df['EMA_50'], 20, 0)
+    # Breakout check
+    if 'Prev Day High' in df.columns:
+        df['breakout'] = df['close'] > df['Prev Day High']
+    else:
+        df['breakout'] = False
     
-    return np.clip(score, 0, 100)
+    return df
 
-def get_simple_signal(df):
-    """Simple signal classification"""
-    return np.where(df['momentum_score'] >= 70, 'Strong',
-           np.where(df['momentum_score'] >= 50, 'Moderate', 'Weak'))
-
-# --- Load Data ---
-@st.cache_resource
-def initialize_data():
-    return load_stock_data()
-
-with st.spinner("Loading data..."):
-    df, market_summary = initialize_data()
-
+# Load data instantly
+df = load_data()
 if df is None:
-    st.error("Data file not found. Please upload your CSV file.")
+    st.error("CSV file not found!")
     st.stop()
 
-# --- Sidebar ---
-with st.sidebar:
-    st.markdown("## Market Overview")
+# --- Quick Stats (No AI) ---
+total = len(df)
+high_mom = len(df[df['momentum'] > 70])
+breakouts = len(df[df['breakout'] == True])
+oversold = len(df[df['rsi'] < 30]) if 'rsi' in df.columns else 0
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Total", total)
+col2.metric("High Momentum", high_mom)
+col3.metric("Breakouts", breakouts)
+col4.metric("Oversold", oversold)
+
+# --- Instant Stock Lists (No AI) ---
+def get_stock_list(filter_type):
+    if filter_type == "high_momentum":
+        stocks = df[df['momentum'] > 70].nlargest(15, 'momentum')
+        return stocks[['symbol', 'close', 'momentum']].round(2)
     
-    st.metric("Total Stocks", market_summary['total'])
-    st.metric("Bullish", market_summary['bullish'])
-    st.metric("Breakouts", market_summary['breakouts'])
+    elif filter_type == "breakouts":
+        stocks = df[df['breakout'] == True].nlargest(15, 'momentum')
+        return stocks[['symbol', 'close', 'momentum']].round(2)
     
-    st.markdown("### Top Momentum")
-    for stock in market_summary['top_stocks'][:3]:
-        st.markdown(f"**{stock['symbol']}** - {stock['momentum_score']:.0f}")
-
-# --- Simplified AI System ---
-def get_system_prompt():
-    return """You are a stock screening assistant. Provide concise, factual responses.
-
-RULES:
-- List specific stock symbols with key metrics
-- Keep responses under 200 words
-- No buy/sell recommendations
-- Focus on technical screening only
-- Use bullet points for clarity
-
-Available data: symbol, close price, RSI_14, MACD, EMA_50, momentum_score (0-100)
-"""
-
-def query_stocks(user_query: str, df: pd.DataFrame) -> str:
-    """Process user query and return stock list"""
-    try:
-        # Simple filtering
-        filtered_df = filter_stocks(user_query, df)
-        
-        if filtered_df.empty:
-            return "No stocks match your criteria."
-        
-        # Get top 10 results
-        top_stocks = filtered_df.nlargest(10, 'momentum_score')
-        
-        # Prepare data for AI
-        stock_data = top_stocks[['symbol', 'close', 'momentum_score', 'signal', 'RSI_14']].round(2).to_dict('records')
-        
-        prompt = f"Query: {user_query}\n\nStock Data: {json.dumps(stock_data[:8])}\n\nProvide a concise stock list with key metrics."
-        
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": get_system_prompt()},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            max_tokens=300
-        )
-        
-        return response.choices[0].message.content
-        
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-def filter_stocks(query: str, df: pd.DataFrame) -> pd.DataFrame:
-    """Filter stocks based on query"""
-    query_lower = query.lower()
-    filtered_df = df.copy()
+    elif filter_type == "oversold":
+        stocks = df[(df['rsi'] < 35) & (df['momentum'] > 30)].nlargest(15, 'momentum')
+        return stocks[['symbol', 'close', 'rsi']].round(2)
     
-    if 'breakout' in query_lower:
-        filtered_df = filtered_df[filtered_df['breakout'] == True]
+    elif filter_type == "strong_macd":
+        stocks = df[(df['macd_bull'] == True) & (df['momentum'] > 50)].nlargest(15, 'momentum')
+        return stocks[['symbol', 'close', 'momentum']].round(2)
     
-    if 'high momentum' in query_lower:
-        filtered_df = filtered_df[filtered_df['momentum_score'] >= 70]
-    elif 'momentum' in query_lower:
-        filtered_df = filtered_df[filtered_df['momentum_score'] >= 50]
-    
-    if 'oversold' in query_lower and 'RSI_14' in df.columns:
-        filtered_df = filtered_df[filtered_df['RSI_14'] < 35]
-    
-    if 'strong' in query_lower:
-        filtered_df = filtered_df[filtered_df['signal'] == 'Strong']
-    
-    return filtered_df
+    else:  # top_momentum
+        stocks = df.nlargest(15, 'momentum')
+        return stocks[['symbol', 'close', 'momentum']].round(2)
 
-# --- Chat Interface ---
-st.markdown("## Chat")
+# --- Instant Buttons ---
+st.markdown("### Quick Screens")
 
-if 'messages' not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": f"📊 Analyzed {market_summary['total']} stocks. Found {market_summary['bullish']} bullish opportunities and {market_summary['breakouts']} breakouts. Ask me about specific stock screens!"}
-    ]
-
-# Display messages
-for msg in st.session_state.messages:
-    css_class = "user-msg" if msg["role"] == "user" else "ai-msg"
-    st.markdown(f'<div class="chat-message {css_class}">{msg["content"]}</div>', unsafe_allow_html=True)
-
-# Chat input
-if prompt := st.chat_input("Ask for stock screens (e.g., 'high momentum stocks')"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    with st.spinner("Analyzing..."):
-        response = query_stocks(prompt, df)
-    
-    st.session_state.messages.append({"role": "assistant", "content": response})
-    st.rerun()
-
-# --- Quick Buttons ---
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    if st.button("🚀 High Momentum"):
-        query = "Show high momentum stocks above 75"
-        st.session_state.messages.append({"role": "user", "content": query})
-        with st.spinner("Analyzing..."):
-            response = query_stocks(query, df)
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        st.rerun()
+    if st.button("🚀 HIGH MOMENTUM (70+)"):
+        result = get_stock_list("high_momentum")
+        st.markdown("**HIGH MOMENTUM STOCKS:**")
+        for _, row in result.iterrows():
+            st.markdown(f"• **{row['symbol']}** - ${row['close']} (Score: {row['momentum']:.0f})")
 
 with col2:
-    if st.button("💥 Breakouts"):
-        query = "Find breakout stocks above previous day high"
-        st.session_state.messages.append({"role": "user", "content": query})
-        with st.spinner("Analyzing..."):
-            response = query_stocks(query, df)
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        st.rerun()
+    if st.button("💥 BREAKOUTS"):
+        result = get_stock_list("breakouts")
+        st.markdown("**BREAKOUT STOCKS:**")
+        for _, row in result.iterrows():
+            st.markdown(f"• **{row['symbol']}** - ${row['close']} (Score: {row['momentum']:.0f})")
 
 with col3:
-    if st.button("📈 Strong Signals"):
-        query = "Show stocks with strong signals"
-        st.session_state.messages.append({"role": "user", "content": query})
-        with st.spinner("Analyzing..."):
-            response = query_stocks(query, df)
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        st.rerun()
+    if st.button("📈 OVERSOLD BOUNCE"):
+        result = get_stock_list("oversold")
+        st.markdown("**OVERSOLD STOCKS:**")
+        for _, row in result.iterrows():
+            st.markdown(f"• **{row['symbol']}** - ${row['close']} (RSI: {row['rsi']:.0f})")
 
-# --- Data Table ---
-if st.checkbox("Show Top Stocks Table"):
-    top_20 = df.nlargest(20, 'momentum_score')[['symbol', 'close', 'momentum_score', 'signal', 'RSI_14']].round(2)
-    st.dataframe(top_20, use_container_width=True)
+col4, col5 = st.columns(2)
 
-# --- Performance Info ---
-st.markdown("---")
-st.caption("Optimized for speed • Simplified analysis • No financial advice")
+with col4:
+    if st.button("💪 STRONG MACD"):
+        result = get_stock_list("strong_macd")
+        st.markdown("**STRONG MACD STOCKS:**")
+        for _, row in result.iterrows():
+            st.markdown(f"• **{row['symbol']}** - ${row['close']} (Score: {row['momentum']:.0f})")
+
+with col5:
+    if st.button("🏆 TOP MOMENTUM"):
+        result = get_stock_list("top_momentum")
+        st.markdown("**TOP MOMENTUM STOCKS:**")
+        for _, row in result.iterrows():
+            st.markdown(f"• **{row['symbol']}** - ${row['close']} (Score: {row['momentum']:.0f})")
+
+# --- Manual Filters ---
+st.markdown("### Manual Filters")
+
+col1, col2 = st.columns(2)
+with col1:
+    min_momentum = st.slider("Min Momentum", 0, 100, 50)
+with col2:
+    max_rsi = st.slider("Max RSI", 30, 100, 70)
+
+if st.button("🔍 APPLY FILTERS"):
+    filtered = df[(df['momentum'] >= min_momentum) & (df['rsi'] <= max_rsi)].nlargest(20, 'momentum')
+    st.markdown("**FILTERED STOCKS:**")
+    for _, row in filtered.iterrows():
+        st.markdown(f"• **{row['symbol']}** - ${row['close']:.2f} (Mom: {row['momentum']:.0f}, RSI: {row['rsi']:.0f})")
+
+# --- Raw Data Toggle ---
+if st.checkbox("Show Raw Data"):
+    display_df = df[['symbol', 'close', 'momentum', 'rsi', 'breakout']].round(2)
+    st.dataframe(display_df.head(50), use_container_width=True)
+
+st.caption("⚡ Ultra-fast screening • No AI delays • Pure data")
