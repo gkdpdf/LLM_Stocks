@@ -74,18 +74,37 @@ col3.metric("Breakouts", summary['breakouts'])
 
 # --- AI System ---
 def get_system_prompt():
-    return """You are a stock screener. Return ONLY a simple list of stocks with basic info.
+    return """You are an advanced NLP stock screener for Indian stock market. Understand natural language queries and return simple stock lists.
+
+UNDERSTAND QUERIES LIKE:
+- "show me breakout stocks" → filter breakout=True
+- "which stocks have RSI below 30?" → filter rsi<30
+- "find momentum above 75" → filter momentum>75
+- "oversold stocks that might bounce" → rsi<35 AND momentum>40
+- "strong stocks breaking out" → breakout=True AND momentum>70
+- "stocks above ₹1000" → filter price>1000
+- "cheap stocks under ₹100" → filter price<100
+- "high volume stocks" → sort by volume
+- "stocks near 52 week high" → close price near year high
+
+INDIAN STOCK CONTEXT:
+- Prices are in Indian Rupees (₹)
+- Stocks like MIDCPNIFTY, ZFCVINDIA, ZENTEC, ZENSARTECH, ZEEL
+- Price ranges from ₹100 to ₹13000+
+- Volume in lakhs/crores
 
 FORMAT EXACTLY LIKE THIS:
-• AAPL - $150.25 (Score: 85)
-• TSLA - $245.60 (Score: 82)
-• NVDA - $420.15 (Score: 79)
+• MIDCPNIFTY - ₹12930.45 (Score: 85)
+• ZFCVINDIA - ₹1350.00 (Score: 82)
+• ZENTEC - ₹1773.20 (Score: 79)
 
 RULES:
 - Max 10 stocks
 - No explanations or advice
+- Use ₹ symbol for Indian Rupees
 - Just symbol, price, momentum score
-- Use bullet points only"""
+- Use bullet points only
+- Understand natural language queries"""
 
 def query_ai(user_query: str, df: pd.DataFrame) -> str:
     try:
@@ -119,23 +138,67 @@ def filter_data(query: str, df: pd.DataFrame) -> pd.DataFrame:
     q = query.lower()
     filtered = df.copy()
     
-    if 'breakout' in q:
+    # Enhanced NLP understanding for Indian stocks
+    if any(word in q for word in ['breakout', 'broke above', 'breaking out', 'breakthrough']):
         filtered = filtered[filtered['breakout'] == True]
-    if 'high momentum' in q or 'momentum > 70' in q:
+    
+    if any(word in q for word in ['high momentum', 'momentum above', 'momentum > 70', 'strong momentum']):
         filtered = filtered[filtered['momentum'] > 70]
-    elif 'momentum' in q:
+    elif any(word in q for word in ['momentum', 'mom']):
         filtered = filtered[filtered['momentum'] > 50]
-    if 'oversold' in q:
+    
+    if any(word in q for word in ['oversold', 'rsi below', 'rsi < 30', 'rsi under']):
         filtered = filtered[filtered['rsi'] < 35]
-    if 'strong' in q:
+    
+    if any(word in q for word in ['overbought', 'rsi above 70', 'rsi > 70']):
+        filtered = filtered[filtered['rsi'] > 70]
+    
+    if any(word in q for word in ['strong', 'powerful', 'top', 'best']):
         filtered = filtered[filtered['momentum'] > 70]
+    
+    if any(word in q for word in ['bounce', 'reversal', 'recovery', 'turnaround']):
+        filtered = filtered[(filtered['rsi'] < 35) & (filtered['momentum'] > 40)]
+    
+    # Price filters in Indian Rupees
+    if any(word in q for word in ['expensive', 'above 1000', '> 1000', 'high price']):
+        filtered = filtered[filtered['close'] > 1000]
+    
+    if any(word in q for word in ['cheap', 'under 100', '< 100', 'low price', 'below 100']):
+        filtered = filtered[filtered['close'] < 100]
+    
+    if any(word in q for word in ['mid cap', 'medium price', '200 to 1000']):
+        filtered = filtered[(filtered['close'] >= 200) & (filtered['close'] <= 1000)]
+    
+    if any(word in q for word in ['penny stocks', 'very cheap', 'under 50']):
+        filtered = filtered[filtered['close'] < 50]
+    
+    # Volume filters
+    if any(word in q for word in ['high volume', 'active', 'heavy trading']):
+        if 'volume' in filtered.columns:
+            median_vol = filtered['volume'].median()
+            filtered = filtered[filtered['volume'] > median_vol * 2]
+    
+    # 52 week filters
+    if any(word in q for word in ['52 week high', 'yearly high', 'near high']):
+        if 'year' in filtered.columns:
+            filtered = filtered[filtered['close'] >= filtered['year'] * 0.95]
+    
+    # Number filters
+    if 'above 75' in q or '> 75' in q:
+        filtered = filtered[filtered['momentum'] > 75]
+    if 'above 80' in q or '> 80' in q:
+        filtered = filtered[filtered['momentum'] > 80]
+    if 'below 30' in q or '< 30' in q:
+        filtered = filtered[filtered['rsi'] < 30]
     
     return filtered
 
-# --- Chat Interface ---
+# --- NLP Chat Interface ---
+st.markdown("**💬 AI Chat - Ask in Natural Language:**")
+
 if 'msgs' not in st.session_state:
     st.session_state.msgs = [
-        {"role": "ai", "content": f"📊 Ready! Found {summary['bullish']} bullish stocks and {summary['breakouts']} breakouts. Ask me for stock lists!"}
+        {"role": "ai", "content": f"📊 Ready! Found {summary['bullish']} bullish stocks and {summary['breakouts']} breakouts. Ask me anything about stocks!"}
     ]
 
 # Display chat
@@ -143,11 +206,11 @@ for msg in st.session_state.msgs:
     css = "user" if msg["role"] == "user" else "ai"
     st.markdown(f'<div class="chat-msg {css}">{msg["content"]}</div>', unsafe_allow_html=True)
 
-# Chat input
-if prompt := st.chat_input("Ask for stocks (e.g., 'high momentum stocks')"):
+# Chat input with NLP examples for Indian stocks
+if prompt := st.chat_input("💭 Ask in Hindi/English: 'saste stocks dikhao', 'expensive stocks above ₹1000', 'breakout stocks', 'RSI 30 ke neeche'"):
     st.session_state.msgs.append({"role": "user", "content": prompt})
     
-    with st.spinner("🔍"):
+    with st.spinner("🧠 AI analyzing..."):
         response = query_ai(prompt, df)
     
     st.session_state.msgs.append({"role": "ai", "content": response})
